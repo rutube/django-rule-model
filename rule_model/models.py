@@ -2,6 +2,8 @@
 from django.db import models
 from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
+from functools import partial
+import operator
 from rule_model.managers import BaseRuleManager
 
 
@@ -137,10 +139,51 @@ def bind_update_priority_handlers(sender, **kwargs):
 
 
 class AbstractRuleModel(PriorityOrderingAbstractModel):
+    """ Абстрактная модель приоритезированного правила.
+    """
     objects = BaseRuleManager()
 
-    def match(self):
-        raise NotImplementedError()
+    def match(self, check_all=False, exclude_check=set(), **kwargs):
+        """ Функция проверки подходит ли правило под указанные в параметра
+        условия.
+
+        Реализация по умолчанию, методы для проверки параметров генерируются
+        автоматически на основе простого сравнения.
+
+        @param check_all: параметр, указывающий что нужно проверить все поля,
+            прежде чем вернуть ответ. Если установлен в False, то возвращает
+            False сразу как только какой-либо параметр не пройдет проверку.
+        @param exclude_check: множество, содержит в себе проверки, которые
+            можно исключить. Полезен в случаях, когда мы точно знаем, что
+            правило пройдет какую-то проверку.
+        @param kwargs: параметры фильтрации
+        @return: True/False в зависимости от того, подходит тема для данных
+            параметров или нет
+
+        """
+        # Убрать self.validation. Результатом вызова должет быть объект
+        # validation, который ведёт себя как dict, а в булевом контекте выдает
+        # True/False в зависимости от состояния ячеек.
+        self.validation = {}
+        result = True
+        for f in self.params_to_check:
+            if f in exclude_check:
+                # пропускаем проверку, если об этом попросили
+                continue
+
+            # Сравнивает занчание поля модели и переданного параметра
+            default_checker = partial(operator.eq, getattr(self, f))
+
+            checker = getattr(self, "check_%s" % f, default_checker)
+            if checker(kwargs.get(f)):
+                self.validation[f] = True
+            else:
+                self.validation[f] = False
+                if check_all:
+                    result = False
+                else:
+                    return False
+        return result
 
     class Meta(PriorityOrderingAbstractModel.Meta):
         abstract = True
