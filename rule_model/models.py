@@ -72,8 +72,8 @@ class PriorityOrderingAbstractModel(models.Model):
 
     @property
     def priority_bin(self):
-        """ приоритет темы скинирования в виде битовой макси
-            (двоичная сс)"""
+        """ Приоритет в виде битовой маски
+        """
         mask = []
         for fld in self.priority_sorted_fields:
             checker = getattr(self, "_check_priority_%s" % fld, self.check_attr)
@@ -85,7 +85,7 @@ class PriorityOrderingAbstractModel(models.Model):
 
     @property
     def priority_dec(self):
-        """ приоритет в десятичной сс """
+        """ Приоритет в десятичном виде """
         return int(self.priority_bin, 2)
 
     def update_priority(self):
@@ -143,6 +143,14 @@ class AbstractRuleModel(PriorityOrderingAbstractModel):
     """
     objects = BaseRuleManager()
 
+    @property
+    def params_to_check(self):
+        while True:
+            try:
+                return self._params_to_check
+            except AttributeError:
+                self._params_to_check = [f.name for f in self._meta.fields]
+
     def match(self, check_all=False, exclude_check=set(), **kwargs):
         """ Функция проверки подходит ли правило под указанные в параметра
         условия.
@@ -157,7 +165,7 @@ class AbstractRuleModel(PriorityOrderingAbstractModel):
             можно исключить. Полезен в случаях, когда мы точно знаем, что
             правило пройдет какую-то проверку.
         @param kwargs: параметры фильтрации
-        @return: True/False в зависимости от того, подходит тема для данных
+        @return: True/False в зависимости от того, подходит объект для данных
             параметров или нет
 
         """
@@ -167,8 +175,8 @@ class AbstractRuleModel(PriorityOrderingAbstractModel):
         self.validation = {}
         result = True
         for f in self.params_to_check:
-            if f in exclude_check:
-                # пропускаем проверку, если об этом попросили
+            if f in exclude_check or f not in kwargs:
+                # пропускаем проверку, если она не требуется
                 continue
 
             # Сравнивает занчание поля модели и переданного параметра
