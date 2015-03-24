@@ -175,7 +175,7 @@ class AbstractRuleModel(PriorityOrderingAbstractModel):
         self.validation = {}
         result = True
         for f in self.params_to_check:
-            if f in exclude_check or f not in kwargs:
+            if f in exclude_check:
                 # пропускаем проверку, если она не требуется
                 continue
 
