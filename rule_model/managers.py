@@ -10,7 +10,7 @@ class BaseRuleManager(models.Manager):
 
         Может переопределяться в наследниках.
         """
-        return self.get_query_set(**kwargs).order_by('-priority')
+        return self.filter(**kwargs).order_by('-priority')
 
     # Поля, которые фильтруются запросом и не требуют дополнительной
     # проверки методом match() модели
