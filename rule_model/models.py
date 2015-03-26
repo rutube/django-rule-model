@@ -179,10 +179,13 @@ class AbstractRuleModel(PriorityOrderingAbstractModel):
                 # пропускаем проверку, если она не требуется
                 continue
 
-            # Сравнивает занчание поля модели и переданного параметра
-            default_checker = partial(operator.eq, getattr(self, f))
+            checker = getattr(self, "check_%s" % f, None)
+            if not checker:
+                # AttributeError в этом месте означает, что для параметра не
+                # был определёно метод проверки и автоматически из начзвания
+                # параметра его получить не удаётся.
+                checker = partial(operator.eq, getattr(self, f))
 
-            checker = getattr(self, "check_%s" % f, default_checker)
             if checker(kwargs.get(f)):
                 self.validation[f] = True
             else:
