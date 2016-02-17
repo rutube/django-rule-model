@@ -4,6 +4,7 @@ import operator
 from functools import partial
 
 from django.db import models
+from django.dispatch import receiver
 from django.utils.translation import ugettext_lazy as _
 from rule_model.managers import BaseRuleManager
 
@@ -122,6 +123,8 @@ def update_priority_on_m2m_changed(sender, action, instance, **kwargs):
         instance.update_priority()
 
 
+@receiver(models.signals.class_prepared, 
+          dispatch_uid='bind_update_priority_handlers')
 def bind_update_priority_handlers(sender, **kwargs):
     """ Подключает сигналы для пересчёта приоритетов при обновление моделей,
     поддерживающих приоритеты.
