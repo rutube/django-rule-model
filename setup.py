@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
     name='django-rule-model',
-    version='0.6',
+    version='0.7',
     packages=[
         "rule_model",
     ],
