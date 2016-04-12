@@ -123,6 +123,48 @@ def update_priority_on_m2m_changed(sender, action, instance, **kwargs):
         instance.update_priority()
 
 
+def update_priority_on_m2m_model_delete(sender, instance, *args, **kwargs):
+    if hasattr(instance, "_need_update_priority"):
+        for v in instance._need_update_priority.values():
+            for m in v:
+                m.update_priority()
+
+
+def update_priority_fabric(m2m):
+    def save_need_update_priority(sender, instance, *args, **kwargs):
+        if not hasattr(m2m.rel.related_model, "update_priority"):
+            return
+        if not hasattr(instance, "_need_update_priority"):
+            instance._need_update_priority = {}
+        to_update = list(m2m.rel.related_model.objects.filter(**{m2m.name: instance}))
+        instance._need_update_priority[m2m.rel.related_model] = to_update
+    return save_need_update_priority
+
+
+@receiver(models.signals.class_prepared,
+          dispatch_uid='bind_update_priority_handlers')
+def bind_update_priority_handlers(sender, **kwargs):
+    """ Подключает сигналы для пересчёта приоритетов при обновление моделей,
+    поддерживающих приоритеты.
+    """
+    if hasattr(sender, 'update_priority'):
+        models.signals.post_save.connect(
+            update_priority_on_post_save, sender=sender,
+            dispatch_uid='update_priority_on_post_save')
+        for m2m in sender._meta.many_to_many:
+            if m2m.name in sender.priority_sorted_fields:
+                models.signals.m2m_changed.connect(
+                    update_priority_on_m2m_changed, sender=m2m.rel.through,
+                    dispatch_uid='update_priority_on_m2m_changed')
+
+                models.signals.pre_delete.connect(
+                    update_priority_fabric(m2m), sender=m2m.rel.to, weak=False,
+                    dispatch_uid='%s_save_need_update_priority' % m2m.rel.through.__name__)
+                models.signals.post_delete.connect(
+                    update_priority_on_m2m_model_delete, sender=m2m.rel.to,
+                    dispatch_uid='update_priority_on_m2m_model_delete')
+
+
 @receiver(models.signals.class_prepared, 
           dispatch_uid='bind_update_priority_handlers')
 def bind_update_priority_handlers(sender, **kwargs):
