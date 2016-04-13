@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 import operator
 from functools import partial
 
+from django.conf import settings
 from django.db import models
 from django.dispatch import receiver
 from django.utils.translation import ugettext_lazy as _
@@ -123,7 +124,40 @@ def update_priority_on_m2m_changed(sender, action, instance, **kwargs):
         instance.update_priority()
 
 
-@receiver(models.signals.class_prepared, 
+def update_priority_on_m2m_model_delete(sender, instance, *args, **kwargs):
+    """ Обновляем приоритет при удалении связанных по m2m объекто. m2m_changed
+    в этом случае не срабатывает
+    """
+    if hasattr(instance, "_need_update_priority"):
+        for v in instance._need_update_priority.values():
+            for m in v:
+                old_priority = m.priority
+                m.update_priority()
+                # Если у нас изменился приоритет - значит удалился последний из
+                # связей с m2m. Это может привести к тому, что правило начнет
+                # неявно таргетироваться на большее количество записей. Поэтому
+                # деактивируем его, если это разрешено настройками
+                if old_priority != m.priority and m.deactivate_on_clean_related_m2m:
+                    m.is_active = False
+                    m.save()
+
+
+def update_priority_fabric(m2m):
+    """ Фабрика для обработчиков сигналов удаления связанных по m2m объектов.
+    Возвращает функцию, которая будет собирать информацию о связанных правилах,
+    которым нужно обновить приоритет после удаления
+    """
+    def save_need_update_priority(sender, instance, *args, **kwargs):
+        if not hasattr(m2m.rel.related_model, "update_priority"):
+            return
+        if not hasattr(instance, "_need_update_priority"):
+            instance._need_update_priority = {}
+        to_update = list(m2m.rel.related_model.objects.filter(**{m2m.name: instance}))
+        instance._need_update_priority[m2m.rel.related_model] = to_update
+    return save_need_update_priority
+
+
+@receiver(models.signals.class_prepared,
           dispatch_uid='bind_update_priority_handlers')
 def bind_update_priority_handlers(sender, **kwargs):
     """ Подключает сигналы для пересчёта приоритетов при обновление моделей,
@@ -134,16 +168,26 @@ def bind_update_priority_handlers(sender, **kwargs):
             update_priority_on_post_save, sender=sender,
             dispatch_uid='update_priority_on_post_save')
         for m2m in sender._meta.many_to_many:
-            sender = m2m.rel.through
-            models.signals.m2m_changed.connect(
-                update_priority_on_m2m_changed, sender=sender,
-                dispatch_uid='update_priority_on_m2m_changed')
+            if m2m.name in sender.priority_sorted_fields:
+                models.signals.m2m_changed.connect(
+                    update_priority_on_m2m_changed, sender=m2m.rel.through,
+                    dispatch_uid='update_priority_on_m2m_changed')
+                models.signals.pre_delete.connect(
+                    update_priority_fabric(m2m), sender=m2m.rel.to, weak=False,
+                    dispatch_uid='%s_save_need_update_priority' % m2m.rel.through.__name__)
+                models.signals.post_delete.connect(
+                    update_priority_on_m2m_model_delete, sender=m2m.rel.to,
+                    dispatch_uid='update_priority_on_m2m_model_delete')
 
 
 class AbstractRuleModel(PriorityOrderingAbstractModel):
     """ Абстрактная модель приоритезированного правила.
     """
+    is_active = models.BooleanField(_("активно"), default=True)
     objects = BaseRuleManager()
+
+    deactivate_on_clean_related_m2m = getattr(
+        settings, "RULE_MODEL_DEACTIVATE_ON_CLEAN_RELATED_M2M", True)
 
     @property
     def params_to_check(self):
