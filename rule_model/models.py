@@ -8,6 +8,7 @@ from django.db import models
 from django.dispatch import receiver
 from django.utils.translation import ugettext_lazy as _
 from rule_model.managers import BaseRuleManager
+from rule_model.signals import rule_deactivated_auto_signal
 
 
 class PriorityOrderingAbstractModel(models.Model):
@@ -140,6 +141,7 @@ def update_priority_on_m2m_model_delete(sender, instance, *args, **kwargs):
                 if old_priority != m.priority and m.deactivate_on_clean_related_m2m:
                     m.is_active = False
                     m.save()
+                    rule_deactivated_auto_signal.send(sender, rule=m, related=instance)
 
 
 def update_priority_fabric(m2m):
