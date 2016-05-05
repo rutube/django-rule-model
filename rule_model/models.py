@@ -6,9 +6,11 @@ from functools import partial
 from django.conf import settings
 from django.db import models
 from django.dispatch import receiver
+from django.utils.functional import cached_property
 from django.utils.translation import ugettext_lazy as _
 from rule_model.managers import BaseRuleManager
 from rule_model.signals import rule_deactivated_auto_signal
+from rule_model.validation import Validation
 
 
 class PriorityOrderingAbstractModel(models.Model):
@@ -191,58 +193,39 @@ class AbstractRuleModel(PriorityOrderingAbstractModel):
     deactivate_on_clean_related_m2m = getattr(
         settings, "RULE_MODEL_DEACTIVATE_ON_CLEAN_RELATED_M2M", True)
 
-    @property
+    @cached_property
     def params_to_check(self):
-        while True:
-            try:
-                return self._params_to_check
-            except AttributeError:
-                self._params_to_check = [f.name for f in self._meta.fields]
+        return self._params_to_check or [f.name for f in self._meta.fields]
 
-    def match(self, check_all=False, exclude_check=set(), **kwargs):
+    def get_param_checker(self, f, exclude_check=set()):
+        """ Возвращает генератор валидаторов для параметров правила
+        """
+        if f in exclude_check:
+            return lambda a: True
+        else:
+            try:
+                return getattr(self, "check_%s" % f)
+            except AttributeError:
+                return partial(operator.eq, getattr(self, f))
+
+    def match(self, exclude_check=set(), **kwargs):
         """ Функция проверки подходит ли правило под указанные в параметра
         условия.
 
         Реализация по умолчанию, методы для проверки параметров генерируются
         автоматически на основе простого сравнения.
 
-        @param check_all: параметр, указывающий что нужно проверить все поля,
-            прежде чем вернуть ответ. Если установлен в False, то возвращает
-            False сразу как только какой-либо параметр не пройдет проверку.
         @param exclude_check: множество, содержит в себе проверки, которые
             можно исключить. Полезен в случаях, когда мы точно знаем, что
             правило пройдет какую-то проверку.
         @param kwargs: параметры фильтрации
-        @return: True/False в зависимости от того, подходит объект для данных
-            параметров или нет
-
+        @return: объект self.Validation
         """
-        # Убрать self.validation. Результатом вызова должет быть объект
-        # validation, который ведёт себя как dict, а в булевом контекте выдает
-        # True/False в зависимости от состояния ячеек.
-        self.validation = {}
-        result = True
+        checkers = []
         for f in self.params_to_check:
-            if f in exclude_check:
-                # пропускаем проверку, если она не требуется
-                continue
-
-            checker = getattr(self, "check_%s" % f, None)
-            if not checker:
-                # AttributeError в этом месте означает, что для параметра не
-                # был определёно метод проверки и автоматически из начзвания
-                # параметра его получить не удаётся.
-                checker = partial(operator.eq, getattr(self, f))
-
-            if checker(kwargs.get(f)):
-                self.validation[f] = True
-            else:
-                self.validation[f] = False
-                if check_all:
-                    result = False
-                else:
-                    return False
-        return result
+            checker = self.get_param_checker(f, exclude_check)
+            checkers.append((f, partial(checker, kwargs.get(f))))
+        return Validation(checkers)
 
     class Meta(PriorityOrderingAbstractModel.Meta):
         abstract = True
