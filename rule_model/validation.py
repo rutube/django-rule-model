@@ -1,4 +1,5 @@
 # coding: utf-8
+import six
 from collections import Mapping, OrderedDict
 
 
@@ -26,4 +27,4 @@ class Validation(Mapping):
         return len(self.__checkers)
 
     def __nonzero__(self):
-        return all(self.itervalues())
+        return all(six.itervalues(self))
