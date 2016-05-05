@@ -15,4 +15,7 @@ setup(
     description='',
     maintainer='tmalikova',
     maintainer_email='tmalikova@rutube.ru',
+    install_requires=[
+        'six'
+    ]
 )
