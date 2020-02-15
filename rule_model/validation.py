@@ -28,3 +28,6 @@ class Validation(Mapping):
 
     def __nonzero__(self):
         return all(six.itervalues(self))
+
+    __bool__ = __nonzero__
+
