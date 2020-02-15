@@ -58,10 +58,17 @@ class PriorityOrderingAbstractModel(models.Model):
 
     def get_field_checker(self, field):
         """ Возвращает подходящий чекер в зависимости от типа поля """
-        try:
-            field_object, model, direct, is_m2m = self._meta.get_field_by_name(field)
-        except models.FieldDoesNotExist:
-            field_object, model, direct, is_m2m = (None, None, None, False)
+        if VERSION < (1, 10):
+            try:
+                field_object, model, direct, is_m2m = self._meta.get_field_by_name(field)
+            except models.FieldDoesNotExist:
+                field_object, model, direct, is_m2m = (None, None, None, False)
+        else:
+            try:
+                field_object = self._meta.get_field(field)
+            except models.FieldDoesNotExist:
+                field_object = None
+            is_m2m = field_object and field_object.many_to_many
 
         if is_m2m:
             return self.check_qs
