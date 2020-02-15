@@ -19,6 +19,11 @@ def get_rel(m2m):
         return m2m.rel
     return m2m.remote_field
 
+def get_model(remote_field):
+    if VERSION < (1, 9):
+        return m2m.to
+    return m2m.model
+
 
 class PriorityOrderingAbstractModel(models.Model):
     """ Миксин для моделей, приоритезируемых в зависимости от состояния полей.
@@ -184,10 +189,10 @@ def bind_update_priority_handlers(sender, **kwargs):
                     update_priority_on_m2m_changed, sender=get_rel(m2m).through,
                     dispatch_uid='update_priority_on_m2m_changed')
                 models.signals.pre_delete.connect(
-                    update_priority_fabric(m2m), sender=get_rel(m2m).to, weak=False,
+                    update_priority_fabric(m2m), sender=get_to(get_model(m2m)), weak=False,
                     dispatch_uid='%s_save_need_update_priority' % get_rel(m2m).through.__name__)
                 models.signals.post_delete.connect(
-                    update_priority_on_m2m_model_delete, sender=get_rel(m2m).to,
+                    update_priority_on_m2m_model_delete, sender=get_to(get_model(m2m)),
                     dispatch_uid='update_priority_on_m2m_model_delete')
 
 
